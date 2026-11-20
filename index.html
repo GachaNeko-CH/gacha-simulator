@@ -24,7 +24,7 @@
 <div class="field wide"><label for="freeEvery">無料カードをもらえる間隔（回）</label><input id="freeEvery" type="number" min="1" step="1" value="800"><span class="hint">間隔ごとに無料カードを1枚獲得します。獲得分を貯め、目標達成に使える時点でガチャを止めて不足分に使います。</span></div>
 </div><div class="buttons"><button id="run">シミュレーション開始</button><button id="reset" type="button">初期値</button></div><div class="note" id="probNote">対象URは各21倍、その他URは各1倍の重みで抽選します。</div></section>
 <div class="content"><section class="panel" id="result"><div class="empty"><div><strong>設定してシミュレーション</strong>対象カードすべてが目標枚数に届くか、最大回数まで実行します。</div></div></section>
-<section class="panel hidden" id="averagePanel"><h2>平均結果（1,000回試行）</h2><p class="hint" id="averageSummary" aria-live="polite"></p><div class="stats" id="averageMetrics"></div><div class="tablewrap"><table><thead><tr><th>対象カード</th><th>平均ガチャ排出</th><th>平均無料分</th><th>平均合計</th></tr></thead><tbody id="averageRows"></tbody></table></div><p class="foot">平均値は、最大回数以内に全カードの目標を達成した試行を対象にします。</p></section>
+<section class="panel hidden" id="averagePanel"><h2>平均結果（1,000回試行）</h2><p class="hint" id="averageSummary" aria-live="polite"></p><div class="stats" id="averageMetrics"></div><div class="stats" id="averageExtremes"></div><div class="tablewrap"><table><thead><tr><th>対象カード</th><th>平均ガチャ排出</th><th>平均無料分</th><th>平均合計</th></tr></thead><tbody id="averageRows"></tbody></table></div><p class="foot">平均値と最安・最高額の記録は、最大回数以内に全カードの目標を達成した試行を対象にします。</p></section>
 <section class="panel hidden" id="chartPanel"><h2>目標枚数に対する進捗（ガチャ排出＋無料カード）</h2><canvas id="chart" role="img" aria-label="横軸はガチャ回数で、1,000回ごとに縦線を表示します。縦軸は各カードの目標達成率です"></canvas><div class="chart-legend" id="legend"></div></section></div></div>
 <p class="foot">シミュレーション結果は確率に基づく推定値です。実際の結果を保証するものではありません。無料カードは設定した間隔のガチャ回数ごとに獲得し、目標達成に使える時点で不足分に充当します。</p>
 </main><script>
@@ -76,6 +76,45 @@ function drawChart(ctx,w,h,history,k,targets,colors){
  for(let i=0;i<k;i++){ctx.beginPath();ctx.strokeStyle=colors[i];ctx.lineWidth=2;history.forEach((p,j)=>{let x=L+pw*p.draw/maxX,y=T+ph*(1-(targets[i]===0?1:Math.min(p.counts[i]/targets[i],1)));j?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
  ctx.fillStyle='#a9b5d0';ctx.fillText('0',L-3,h-6);ctx.textAlign='right';ctx.fillText(maxX.toLocaleString(),w-R,h-6);ctx.textAlign='left'
 }
-function runAverage(v){const panel=$('averagePanel'),runButton=$('run'),trials=1000,totalWeight=v.n+v.k*v.boost,targetHit=v.k*v.rate*v.boost/totalWeight,logMiss=Math.log1p(-targetHit),sum={draws:0,bm:0,packs:0,gacha:Array(v.k).fill(0),free:Array(v.k).fill(0),totals:Array(v.k).fill(0)};let done=0,successes=0;runButton.disabled=true;panel.classList.remove('hidden');$('averageSummary').textContent=`平均を計算中… 0 / ${trials.toLocaleString()} 試行`;$('averageMetrics').innerHTML='';$('averageRows').innerHTML='';function one(){const counts=Array(v.k).fill(0),gacha=Array(v.k).fill(0),free=Array(v.k).fill(0);let draws=0,packs=0;const deficit=()=>counts.reduce((s,c,i)=>s+Math.max(0,v.targets[i]-c),0),complete=()=>counts.every((c,i)=>c>=v.targets[i]);while(draws<v.limit&&!complete()&&Math.floor(draws/v.every)<deficit()){packs++;let end=draws+v.packPulls;if(targetHit===0){draws=end;continue}while(draws<end){let gap=Math.floor(Math.log1p(-Math.random())/logMiss)+1;if(draws+gap>end){draws=end;break}draws+=gap;let i=Math.floor(Math.random()*v.k);counts[i]++;gacha[i]++}}let bank=Math.floor(draws/v.every);while(bank>0&&!complete()){let best=-1,choices=[];counts.forEach((c,i)=>{if(c<v.targets[i]){let missing=v.targets[i]-c;if(missing>best){best=missing;choices=[i]}else if(missing===best)choices.push(i)}});let i=choices[0];counts[i]++;free[i]++;bank--}return {draws,packs,counts,gacha,free,complete:complete()}}function batch(){const end=Math.min(done+50,trials);for(;done<end;done++){let r=one();if(r.complete){successes++;sum.draws+=r.draws;sum.packs+=r.packs;sum.bm+=r.packs*v.packCost;r.counts.forEach((x,i)=>{sum.gacha[i]+=r.gacha[i];sum.free[i]+=r.free[i];sum.totals[i]+=x})}}$('averageSummary').textContent=`平均を計算中… ${done.toLocaleString()} / ${trials.toLocaleString()} 試行`;if(done<trials){setTimeout(batch,0);return}if(!successes){$('averageSummary').textContent=`${trials.toLocaleString()}回中、最大回数以内に目標達成した試行はありません。`;runButton.disabled=false;return}const avgDraws=sum.draws/successes,avgPacks=sum.packs/successes,avgBM=sum.bm/successes,avgYen=Math.round(avgBM/13700*10000);$('averageSummary').textContent=`${trials.toLocaleString()}回中 ${successes.toLocaleString()}回で全目標を達成。以下は達成した試行の平均です。`;$('averageMetrics').innerHTML=`<div class="stat"><span>平均必要ガチャ回数</span><b>${Math.round(avgDraws).toLocaleString()}</b><small> 回</small></div><div class="stat"><span>平均セット数</span><b>${avgPacks.toFixed(1)}</b><small> セット</small></div><div class="stat"><span>平均消費BM</span><b>${Math.round(avgBM).toLocaleString()}</b><small> BM</small></div><div class="stat"><span>平均金額換算</span><b>${avgYen.toLocaleString()}円</b><small> 13,700 BM＝10,000円</small></div>`;$('averageRows').innerHTML=Array.from({length:v.k},(_,i)=>`<tr><td>カード ${String.fromCharCode(65+i)}（目標 ${v.targets[i]}枚）</td><td>${(sum.gacha[i]/successes).toFixed(2)}枚</td><td>${(sum.free[i]/successes).toFixed(2)}枚</td><td>${(sum.totals[i]/successes).toFixed(2)}枚</td></tr>`).join('');runButton.disabled=false}batch()}
+function runAverage(v){
+ const panel=$('averagePanel'),runButton=$('run'),trials=1000,totalWeight=v.n+v.k*v.boost,targetHit=v.k*v.rate*v.boost/totalWeight,logMiss=Math.log1p(-targetHit),sum={draws:0,bm:0,packs:0,gacha:Array(v.k).fill(0),free:Array(v.k).fill(0),totals:Array(v.k).fill(0)};
+ let done=0,successes=0,cheapest=null,highest=null;runButton.disabled=true;panel.classList.remove('hidden');$('averageSummary').textContent=`平均を計算中… 0 / ${trials.toLocaleString()} 試行`;$('averageMetrics').innerHTML='';$('averageExtremes').innerHTML='';$('averageRows').innerHTML='';
+ function one(){
+  const counts=Array(v.k).fill(0),gacha=Array(v.k).fill(0),free=Array(v.k).fill(0);let draws=0,packs=0;
+  const deficit=()=>counts.reduce((s,c,i)=>s+Math.max(0,v.targets[i]-c),0),complete=()=>counts.every((c,i)=>c>=v.targets[i]);
+  while(draws<v.limit&&!complete()&&Math.floor(draws/v.every)<deficit()){
+   packs++;let end=draws+v.packPulls;
+   if(targetHit===0){draws=end;continue}
+   while(draws<end){let gap=Math.floor(Math.log1p(-Math.random())/logMiss)+1;if(draws+gap>end){draws=end;break}draws+=gap;let i=Math.floor(Math.random()*v.k);counts[i]++;gacha[i]++}
+  }
+  let bank=Math.floor(draws/v.every);
+  while(bank>0&&!complete()){
+   let best=-1,choices=[];counts.forEach((c,i)=>{if(c<v.targets[i]){let missing=v.targets[i]-c;if(missing>best){best=missing;choices=[i]}else if(missing===best)choices.push(i)}});
+   let i=choices[0];counts[i]++;free[i]++;bank--;
+  }
+  return {draws,packs,counts,gacha,free,complete:complete()};
+ }
+ function batch(){
+  const end=Math.min(done+50,trials);
+  for(;done<end;done++){
+   let r=one();
+   if(r.complete){
+    successes++;const sample={trial:done+1,draws:r.draws,packs:r.packs,bm:r.packs*v.packCost};sum.draws+=r.draws;sum.packs+=r.packs;sum.bm+=sample.bm;
+    if(!cheapest||sample.bm<cheapest.bm)cheapest=sample;if(!highest||sample.bm>highest.bm)highest=sample;
+    r.counts.forEach((x,i)=>{sum.gacha[i]+=r.gacha[i];sum.free[i]+=r.free[i];sum.totals[i]+=x});
+   }
+  }
+  $('averageSummary').textContent=`平均を計算中… ${done.toLocaleString()} / ${trials.toLocaleString()} 試行`;
+  if(done<trials){setTimeout(batch,0);return}
+  if(!successes){$('averageSummary').textContent=`${trials.toLocaleString()}回中、最大回数以内に目標達成した試行はありません。`;runButton.disabled=false;return}
+  const avgDraws=sum.draws/successes,avgPacks=sum.packs/successes,avgBM=sum.bm/successes,avgYen=Math.round(avgBM/13700*10000);
+  $('averageSummary').textContent=`${trials.toLocaleString()}回中 ${successes.toLocaleString()}回で全目標を達成。以下は達成した試行の平均です。`;
+  $('averageMetrics').innerHTML=`<div class="stat"><span>平均必要ガチャ回数</span><b>${Math.round(avgDraws).toLocaleString()}</b><small> 回</small></div><div class="stat"><span>平均セット数</span><b>${avgPacks.toFixed(1)}</b><small> セット</small></div><div class="stat"><span>平均消費BM</span><b>${Math.round(avgBM).toLocaleString()}</b><small> BM</small></div><div class="stat"><span>平均金額換算</span><b>${avgYen.toLocaleString()}円</b><small> 13,700 BM＝10,000円</small></div>`;
+  const extreme=(label,sample)=>`<div class="stat"><span>${label}（試行 ${sample.trial.toLocaleString()}）</span><b>${sample.bm.toLocaleString()} BM</b><small>${Math.round(sample.bm/13700*10000).toLocaleString()}円 ／ ${sample.draws.toLocaleString()}回・${sample.packs}セット</small></div>`;
+  $('averageExtremes').innerHTML=extreme('最安ケース',cheapest)+extreme('最高額ケース',highest);
+  $('averageRows').innerHTML=Array.from({length:v.k},(_,i)=>`<tr><td>カード ${String.fromCharCode(65+i)}（目標 ${v.targets[i]}枚）</td><td>${(sum.gacha[i]/successes).toFixed(2)}枚</td><td>${(sum.free[i]/successes).toFixed(2)}枚</td><td>${(sum.totals[i]/successes).toFixed(2)}枚</td></tr>`).join('');runButton.disabled=false;
+ }
+ batch();
+}
 $('featured').addEventListener('change',renderTargetInputs);renderTargetInputs();$('run').addEventListener('click',run);$('reset').addEventListener('click',()=>{[['urRate',2],['boost',21],['featured',4],['others',83],['limit',100000],['freeEvery',800]].forEach(([id,x])=>$(id).value=x);$('pack').value='60:5000';$('targetInputs').innerHTML='';renderTargetInputs();$('result').innerHTML='<div class="empty"><div><strong>設定してシミュレーション</strong>対象カードすべてが目標枚数に届くか、最大回数まで実行します。</div></div>';$('chartPanel').classList.add('hidden')});
 </script></body></html>
